@@ -79,7 +79,7 @@ class StochasticSwapNoise(TabularBlock):
         self,
         inputs: TensorOrTabularData,
         input_mask: Optional[tf.Tensor] = None,
-        training=True,
+        training=False,
         **kwargs,
     ) -> TensorOrTabularData:
         def augment(input_mask):

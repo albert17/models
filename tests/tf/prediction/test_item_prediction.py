@@ -25,7 +25,7 @@ from merlin_standard_lib import Tag
 def test_retrieval_task(music_streaming_data: SyntheticData, run_eagerly, num_epochs=2):
     music_streaming_data._schema = music_streaming_data.schema.remove_by_tag(Tag.TARGETS)
     two_tower = ml.TwoTowerBlock(music_streaming_data.schema, query_tower=ml.MLPBlock([512, 256]))
-    model = two_tower.connect(ml.ItemRetrievalTask(softmax_temperature=2))
+    model = two_tower.connect(ml.ItemRetrievalTask(softmax_temperature=2, metrics=[]))
 
     output = model(music_streaming_data.tf_tensor_dict)
     assert output is not None

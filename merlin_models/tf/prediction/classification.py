@@ -109,13 +109,14 @@ class Softmax(Block):
         )
         return super().build(input_shape)
 
-    def call(self, inputs, training=True, **kwargs) -> tf.Tensor:
+    def call(self, inputs, training=False, **kwargs) -> tf.Tensor:
         return self.output_layer(inputs)
 
     def compute_output_shape(self, input_shape):
         return input_shape[:-1] + (self.num_classes,)
 
 
+@tf.keras.utils.register_keras_serializable(package="merlin_models")
 class MultiClassClassificationTask(PredictionTask):
     DEFAULT_LOSS = SparseCategoricalCrossentropy(from_logits=True)
     DEFAULT_METRICS = {
@@ -129,7 +130,7 @@ class MultiClassClassificationTask(PredictionTask):
         task_name: Optional[str] = None,
         task_block: Optional[Layer] = None,
         loss=DEFAULT_LOSS,
-        metrics: Sequence[MetricOrMetricClass] = DEFAULT_METRICS,
+        metrics: Sequence[MetricOrMetricClass] = DEFAULT_METRICS["ranking"],
         pre: Optional[Block] = None,
         **kwargs,
     ):
@@ -190,3 +191,15 @@ class MultiClassClassificationTask(PredictionTask):
                 dict_results.update({metric.name: metric.result()})
 
         return dict_results
+
+    def get_config(self):
+        config = super().get_config()
+        config = maybe_serialize_keras_objects(self, config, {"loss": tf.keras.losses.serialize})
+
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        config = maybe_deserialize_keras_objects(config, ["loss"], tf.keras.losses.deserialize)
+
+        return super().from_config(config)

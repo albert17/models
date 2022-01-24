@@ -42,7 +42,7 @@ class MemoryBankBlock(Block, Sampler):
         self.post = post
         self.stop_gradient = stop_gradient
 
-    def call(self, inputs: TabularData, training=True, **kwargs) -> TabularData:
+    def call(self, inputs: TabularData, training=False, **kwargs) -> TabularData:
         if training:
             to_add = inputs[self.key] if self.key else inputs
             self.queue.append(to_add)

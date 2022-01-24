@@ -16,17 +16,14 @@
 
 # flake8: noqa
 
-# Must happen before any importing of tensorflow to curtail mem usage
-from merlin_models.loader.tf_utils import configure_tensorflow
-
-configure_tensorflow()
-
 from tensorflow.keras.layers import Dense, Layer
 from tensorflow.python.keras.losses import Loss
 from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.training.tracking.data_structures import ListWrapper, _DictWrapper
 
+# Must happen before any importing of tensorflow to curtail mem usage
+from merlin_models.loader.tf_utils import configure_tensorflow
 from merlin_standard_lib import Schema, Tag
 
 from .. import data
@@ -86,6 +83,9 @@ from .prediction.ranking_metric import AvgPrecisionAt, NDCGAt, RecallAt
 # from .prediction.multi_task import MMOEHead, PLEHead
 from .prediction.regression import RegressionTask
 from .utils import repr_utils
+
+# configure_tensorflow()
+
 
 Tag.__hash__ = lambda self: hash(str(self))
 

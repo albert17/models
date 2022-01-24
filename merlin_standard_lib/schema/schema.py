@@ -349,6 +349,18 @@ class Schema(_Schema):
             to_remove, collection_filter_fn, lambda x: x.name, negate=True
         )
 
+    def select_targets(self, extra_tags: Optional[TagsType] = None) -> "Schema":
+        from merlin_standard_lib import Tag
+
+        out = self.select_by_tag(Tag.BINARY_CLASSIFICATION)
+        out += self.select_by_tag(Tag.TARGETS)
+        out += self.select_by_tag(Tag.REGRESSION)
+
+        if extra_tags:
+            out += self.select_by_tag(extra_tags)
+
+        return out
+
     def map_column_schemas(self, map_fn: Callable[[ColumnSchema], ColumnSchema]) -> "Schema":
         output_schemas = []
         for column_schema in self.column_schemas:

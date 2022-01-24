@@ -149,6 +149,7 @@ class Block(SchemaMixin, ContextMixin, Layer):
             self._set_context(context)
 
     @classmethod
+    @tf.autograph.experimental.do_not_convert
     def parse(cls, *block: BlockType) -> "Block":
         if len(block) == 1 and isinstance(block[0], (list, tuple)):
             block = block[0]
@@ -422,6 +423,10 @@ class SequentialBlock(Block):
                 )
 
         super(SequentialBlock, self).__init__(**kwargs)
+
+        if getattr(layers[0], "schema", None):
+            super().set_schema(layers[0].schema)
+
         layers = copy.copy(layers) if copy_layers else layers
         if filter:
             if not isinstance(filter, Filter):
@@ -472,6 +477,8 @@ class SequentialBlock(Block):
     @property
     def inputs(self):
         first = list(self)[0]
+        if isinstance(first, SequentialBlock):
+            return first.inputs
         if is_input_block(first):
             return first
 
@@ -552,7 +559,7 @@ class SequentialBlock(Block):
 
         return outputs, targets
 
-    def call_targets(self, predictions, targets, training=None, **kwargs):
+    def call_targets(self, predictions, targets, training=False, **kwargs):
         outputs = targets
         for layer in self.layers:
             outputs = layer.call_targets(predictions, outputs, training=training, **kwargs)
@@ -1342,7 +1349,7 @@ class ParallelBlock(TabularBlock):
         )
 
     @classmethod
-    def from_config(cls, config, custom_objects=None):
+    def parse_config(cls, config, custom_objects=None):
         config = maybe_deserialize_keras_objects(config, ["pre", "post", "aggregation"])
         if "schema" in config:
             config["schema"] = Schema().from_json(config["schema"])
@@ -1352,6 +1359,12 @@ class ParallelBlock(TabularBlock):
             name: tf.keras.layers.deserialize(conf, custom_objects=custom_objects)
             for name, conf in parallel_layers.items()
         }
+
+        return inputs, config
+
+    @classmethod
+    def from_config(cls, config, custom_objects=None):
+        inputs, config = cls.parse_config(config, custom_objects)
 
         return cls(inputs, **config)
 
@@ -1643,9 +1656,9 @@ class PredictionTask(Layer, LossMixin, MetricsMixin, ContextMixin):
             predictions = predictions[self.task_name]
 
         if self.pre:
-            targets = self.pre_loss(predictions, targets, **kwargs)
+            targets = self.pre_loss(predictions, targets, training=training, **kwargs)
 
-        if len(targets.shape) == len(predictions.shape) - 1:
+        if isinstance(targets, tf.Tensor) and len(targets.shape) == len(predictions.shape) - 1:
             predictions = tf.squeeze(predictions)
 
         loss = self._compute_loss(
@@ -1730,6 +1743,9 @@ class PredictionTask(Layer, LossMixin, MetricsMixin, ContextMixin):
             config["target_name"] = self.target_name
         if self._task_name:
             config["task_name"] = self._task_name
+
+        if "metrics" not in config:
+            config["metrics"] = []
 
         return config
 
@@ -2010,22 +2026,38 @@ class Model(tf.keras.Model, LossMixin, MetricsMixin):
             and isinstance(blocks[0], SequentialBlock)
             and isinstance(blocks[0].layers[-1], ModelLikeBlock)
         ):
-            self.body = blocks[0]
-            if not getattr(self.body, "_context", None):
-                self.body._set_context(context)
+            self.block = blocks[0]
         else:
             if not isinstance(blocks[-1], ModelLikeBlock):
                 raise ValueError("Last block must be able to calculate loss & metrics.")
-            self.body = SequentialBlock(blocks, context=context)
+            self.block = SequentialBlock(blocks, context=context)
+        if not getattr(self.block, "_context", None):
+            self.block._set_context(context)
         self.context = context
 
     def call(self, inputs, **kwargs):
-        outputs = self.body(inputs, **kwargs)
+        outputs = self.block(inputs, **kwargs)
         return outputs
+
+    # @property
+    # def inputs(self):
+    #     return self.block.inputs
+
+    @property
+    def first(self):
+        return self.block.layers[0]
+
+    @property
+    def last(self):
+        return self.block.layers[-1]
 
     @property
     def loss_block(self) -> ModelLikeBlock:
-        return self.body.last if isinstance(self.body, SequentialBlock) else self.body
+        return self.block.last if isinstance(self.block, SequentialBlock) else self.block
+
+    @property
+    def schema(self) -> Schema:
+        return self.block.schema
 
     def compute_loss(
         self,
@@ -2063,7 +2095,7 @@ class Model(tf.keras.Model, LossMixin, MetricsMixin):
             else:
                 targets = None
 
-            predictions = self(inputs, training=True)
+            predictions = self(inputs, training=False)
             loss = self.compute_loss(predictions, targets, training=True)
 
             # Handle regularization losses as well.
@@ -2089,7 +2121,7 @@ class Model(tf.keras.Model, LossMixin, MetricsMixin):
         else:
             targets = None
 
-        predictions = self(inputs, training=True)
+        predictions = self(inputs, training=False)
         loss = self.compute_loss(predictions, targets, training=False)
 
         # Handle regularization losses as well.
@@ -2106,12 +2138,12 @@ class Model(tf.keras.Model, LossMixin, MetricsMixin):
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
-        body = tf.keras.utils.deserialize_keras_object(config.pop("body"))
+        block = tf.keras.utils.deserialize_keras_object(config.pop("block"))
 
-        return cls(body, **config)
+        return cls(block, **config)
 
     def get_config(self):
-        return {"body": tf.keras.utils.serialize_keras_object(self.body)}
+        return {"block": tf.keras.utils.serialize_keras_object(self.block)}
 
 
 def is_input_block(block: Block) -> bool:
