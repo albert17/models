@@ -483,6 +483,10 @@ class SequentialBlock(Block):
             return first
 
     @property
+    def first(self):
+        return self.layers[0]
+
+    @property
     def last(self):
         return self.layers[-1]
 
@@ -2095,7 +2099,7 @@ class Model(tf.keras.Model, LossMixin, MetricsMixin):
             else:
                 targets = None
 
-            predictions = self(inputs, training=False)
+            predictions = self(inputs, training=True)
             loss = self.compute_loss(predictions, targets, training=True)
 
             # Handle regularization losses as well.
